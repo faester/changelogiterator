@@ -22,6 +22,10 @@ var lookupApi = new Userservicejppoldk.LookupAndValidateApi()
 authorize.register(clientAccess);
 authorize.authorize();
 
+
+var l = 1;
+var r = 128;
+var findMax = true;
 var minChangeNumber = 1; // {Number} First change of interest
 
 var callback = function(error, data, response) { 
@@ -34,15 +38,37 @@ var callback = function(error, data, response) {
 		}
 	} 
 	else { 
-		console.log('Lookup API called successfully.'); 
-		data.forEach(function(x) { 
-			console.log( x.OperationNumber, x.Operation, x.EventTime, x.UserIdentifier); 
-			minChangeNumber = Math.max(minChangeNumber, x.OperationNumber);
-		});
+		console.log("items", data.length);
+		if (findMax) {
+			if (data.length >= 128){
+				l = minChangeNumber;
+				r = r * 2;
+			} else if (data.length <= 1) {
+				r = minChangeNumber; 
+			} else {
+				minChangeNumber += data.length;
+				console.log("Found min change number", minChangeNumber);
+				findMax = false;
+				setInterval(function() { lookupApi.getChanges(minChangeNumber, callback); }, 10000);
+				return;
+			}
+
+			minChangeNumber = parseInt((r + l) / 2, 10);
+			console.log("Searching", l, minChangeNumber, r);
+			lookupApi.getChanges(minChangeNumber, callback); 
+		} else {
+			data.forEach(function(item) { 
+				minChangeNumber = Math.max(item.OperationNumber, minChangeNumber);
+				console.log(item.Operation, item.OperationNumber, item.UserIdentifier, item.EventTime);
+			});
+			if (data.length > 128){
+				lookupApi.getChanges(minChangeNumber, callback);
+			}
+		}
 	} 
 }; 
 
-setInterval(function() { lookupApi.getChanges(minChangeNumber, callback); }, 500);
+setTimeout(function() { lookupApi.getChanges(minChangeNumber, callback); }, 500);
 
 
 console.log("hello world!");
