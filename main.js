@@ -25,7 +25,8 @@ authorize.authorize();
 
 var l = 1;
 var r = 128;
-var findMax = true;
+var expandingRange = true;
+var findMin = true;
 var minChangeNumber = 1; // {Number} First change of interest
 
 var callback = function(error, data, response) { 
@@ -39,22 +40,30 @@ var callback = function(error, data, response) {
 	} 
 	else { 
 		console.log("items", data.length);
-		if (findMax) {
+		if (expandingRange) {
+			if (data.length > 128) {
+				r = r * 2;
+			} else {
+				expandingRange = false;
+			}
+			minChangeNumber = parseInt((r + l) / 2, 10);
+			console.log("Expanding range", r);
+			lookupApi.getChanges(minChangeNumber, callback); 
+		} else if (findMin) {
 			if (data.length >= 128){
 				l = minChangeNumber;
-				r = r * 2;
 			} else if (data.length <= 1) {
 				r = minChangeNumber; 
 			} else {
-				minChangeNumber += data.length;
+				minChangeNumber += data.length - 1;
+				findMin = false;
 				console.log("Found min change number", minChangeNumber);
-				findMax = false;
 				setInterval(function() { lookupApi.getChanges(minChangeNumber, callback); }, 10000);
 				return;
 			}
 
 			minChangeNumber = parseInt((r + l) / 2, 10);
-			console.log("Searching", l, minChangeNumber, r);
+			console.log("Searching", l, "to", r, "size", r - l);
 			lookupApi.getChanges(minChangeNumber, callback); 
 		} else {
 			data.forEach(function(item) { 
