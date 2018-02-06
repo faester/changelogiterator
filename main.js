@@ -1,6 +1,8 @@
 var Userservicejppoldk = require('userservicejppoldk');
 var authorize = require('./authorize.js');
 var program = require('commander');
+var ParseChanges = require('./parsechanges.js');
+var FindMax = require('./findmax.js');
 
 program
 	.version('0.1.0')
@@ -63,73 +65,6 @@ var expandingRange = program.findMaximum;
 var findMin = program.findMaximum;
 var retrieving = false;
 var maxChangeNumber = maxChange; // {Number} First change of interest
-
-function FindMax(lookupApi, continuation){
-	expandingRange = true;
-	l = 0;
-	r = 128000;
-	m = (l + r) / 2;
-
-	function callback(error, data, response) {
-		if (error) {
-			console.error('There was a problem connecting.', error);
-			return;
-		}
-		console.log('Received', data.length, 'changes.', l, r, m, expandingRange);
-		if (expandingRange) {
-			m = r;
-			r = r * 2;
-			if(data.length < 128) {
-				expandingRange = false;
-			} 
-		} else {
-			if (data.length > 128) {
-				l = m;
-			} else if (data.length < 1) {
-				r = m;
-			} else {
-				m = m + data.length;
-				continuation(m);
-				return;
-			}
-			m = parseInt((l + r) / 2, 10);
-		}
-		lookupApi.getChanges(m, callback);
-	}
-
-	function start() {
-		lookupApi.getChanges(m, callback);
-	}
-
-	return {
-		start: start
-	};
-};
-
-function ParseChanges(lookupApi, receiver) {
-	var m = 0;
-	function callback(error, data, response) {
-		data.forEach(function(item) { 
-			m = Math.max(item.OperationNumber, m);
-			receiver(item);
-		});
-
-		if (data.length == 0) {
-			setTimeout(function() { lookupApi.getChanges(m, callback); }, 5000);
-		} else {
-			lookupApi.getChanges(m, callback);
-		}
-	}
-
-	function start(maxChange) {
-		m = maxChange;	
-		lookupApi.getChanges(maxChange, callback);
-	}
-
-	return {
-		start: start
-	};
-}
 
 var pc = new ParseChanges(lookupApi, function(changeLogItem) {
 	console.log(changeLogItem.Operation, changeLogItem.OperationNumber, changeLogItem.UserIdentifier, changeLogItem.EventTime);
