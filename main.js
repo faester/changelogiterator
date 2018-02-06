@@ -103,7 +103,8 @@ var callback = function(error, data, response) {
 			localStorage.setItem('minChange', minChangeNumber);
 		} else if (!retrieving) {
 			retrieving = true;
-			setInterval(function() { lookupApi.getChanges(minChangeNumber, callback); }, 5000);
+			console.log('minimum change', minChangeNumber);
+			lookupApi.getChanges(minChangeNumber, callback);
 		} else {
 			data.forEach(function(item) { 
 				minChangeNumber = Math.max(item.OperationNumber, minChangeNumber);
@@ -112,6 +113,8 @@ var callback = function(error, data, response) {
 			});
 			if (data.length > 128){
 				lookupApi.getChanges(minChangeNumber, callback);
+			} else {
+				setTimeout(function() { lookupApi.getChanges(minChangeNumber, callback); }, 5000);
 			}
 		}
 	} 
