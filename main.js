@@ -8,8 +8,8 @@ program
 	.option('-s, --secret [value]', 'auth.jppol.dk client secret')
 	.option('-A, --auth [value]', 'Authorization endpoint')
 	.option('-U, --userservice [value]', 'Userservice endpoint')
-	.option('-m, --minChange [value]', 'Minimum change number', parseInt)
-	.option('-M, --findMinimum')
+	.option('-m, --maxChange [value]', 'Minimum change number', parseInt)
+	.option('-M, --findMaximum')
 	.parse(process.argv);
 
 if (typeof localStorage === "undefined" || localStorage === null) {
@@ -17,7 +17,7 @@ if (typeof localStorage === "undefined" || localStorage === null) {
   localStorage = new LocalStorage('./scratch');
 }
 
-parameters = ['id', 'secret', 'auth', 'userservice', 'minChange'];
+parameters = ['id', 'secret', 'auth', 'userservice', 'maxChange'];
 
 parameters.forEach(function(p) {
 if (program[p] != null) {
@@ -37,7 +37,7 @@ var auth = localStorage.getItem('auth');
 var userservice = localStorage.getItem('userservice'); 
 var clientId = localStorage.getItem('id'); 
 var clientSecret = localStorage.getItem('secret');
-var minChange = localStorage.getItem('minChange');
+var maxChange = localStorage.getItem('maxChange');
 
 var token = "empty";
 authorize.init(auth, clientId, clientSecret);
@@ -59,68 +59,89 @@ authorize.register(clientAccess);
 
 var l = 1;
 var r = 12800000;
-var expandingRange = program.findMinimum;
-var findMin = program.findMinimum;
+var expandingRange = program.findMaximum;
+var findMin = program.findMaximum;
 var retrieving = false;
-var minChangeNumber = minChange; // {Number} First change of interest
+var maxChangeNumber = maxChange; // {Number} First change of interest
 
-var callback = function(error, data, response) { 
-	if (error) { 
-		if(error.status == 405) {
-			console.error("Client is not allowed to access change log.");
+function FindMax(lookupApi, continuation){
+	expandingRange = true;
+	l = 0;
+	r = 128000;
+	m = (l + r) / 2;
+
+	function callback(error, data, response) {
+		if (error) {
+			console.error('There was a problem connecting.', error);
+			return;
 		}
-		else {
-			console.error(error); 
-		}
-	} 
-	else { 
-		console.log("items", data.length);
+		console.log('Received', data.length, 'changes.', l, r, m, expandingRange);
 		if (expandingRange) {
-			if (data.length > 128) {
-				r = r * 2;
-			} else {
-				minChangeNumber = r;
-				r = r * 2;
+			m = r;
+			r = r * 2;
+			if(data.length < 128) {
 				expandingRange = false;
-			}
-			console.log("Expanding range", r);
-			lookupApi.getChanges(r, callback); 
-		} else if (findMin) {
-			if (data.length >= 128){
-				l = minChangeNumber;
-			} else if (data.length <= 1) {
-				r = minChangeNumber; 
+			} 
+		} else {
+			if (data.length > 128) {
+				l = m;
+			} else if (data.length < 1) {
+				r = m;
 			} else {
-				minChangeNumber += data.length - 1;
-				findMin = false;
-				console.log("Found min change number", minChangeNumber);
+				m = m + data.length;
+				continuation(m);
 				return;
 			}
-
-			minChangeNumber = parseInt((r + l) / 2, 10);
-			console.log("Searching", l, "to", r, "size", r - l);
-			lookupApi.getChanges(minChangeNumber, callback); 
-			localStorage.setItem('minChange', minChangeNumber);
-		} else if (!retrieving) {
-			retrieving = true;
-			console.log('minimum change', minChangeNumber);
-			lookupApi.getChanges(minChangeNumber, callback);
-		} else {
-			data.forEach(function(item) { 
-				minChangeNumber = Math.max(item.OperationNumber, minChangeNumber);
-				localStorage.setItem('minChange', minChangeNumber);
-				console.log(item.Operation, item.OperationNumber, item.UserIdentifier, item.EventTime);
-			});
-			if (data.length > 128){
-				lookupApi.getChanges(minChangeNumber, callback);
-			} else {
-				setTimeout(function() { lookupApi.getChanges(minChangeNumber, callback); }, 5000);
-			}
+			m = parseInt((l + r) / 2, 10);
 		}
-	} 
-}; 
+		lookupApi.getChanges(m, callback);
+	}
 
-setTimeout(function() { lookupApi.getChanges(minChangeNumber, callback); }, 1000);
+	function start() {
+		lookupApi.getChanges(m, callback);
+	}
 
+	return {
+		start: start
+	};
+};
 
-console.log("hello world!");
+function ParseChanges(lookupApi, receiver) {
+	var m = 0;
+	function callback(error, data, response) {
+		data.forEach(function(item) { 
+			m = Math.max(item.OperationNumber, m);
+			receiver(item);
+		});
+
+		if (data.length == 0) {
+			setTimeout(function() { lookupApi.getChanges(m, callback); }, 5000);
+		} else {
+			lookupApi.getChanges(m, callback);
+		}
+	}
+
+	function start(maxChange) {
+		m = maxChange;	
+		lookupApi.getChanges(maxChange, callback);
+	}
+
+	return {
+		start: start
+	};
+}
+
+var pc = new ParseChanges(lookupApi, function(changeLogItem) {
+	console.log(changeLogItem.Operation, changeLogItem.OperationNumber, changeLogItem.UserIdentifier, changeLogItem.EventTime);
+	localStorage.setItem('maxChange', Math.max(maxChange, changeLogItem.OperationNumber));
+});
+
+var fm = new FindMax(lookupApi, pc.start);
+
+if (program.findMaximum) {
+	setTimeout(fm.start, 1000);
+} else {
+	setTimeout(function() { pc.start(maxChange); }, 1000);
+}
+
+console.log("Eagerly listening.");
