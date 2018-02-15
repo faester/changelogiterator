@@ -57,6 +57,7 @@ authorize.register(clientAccess);
 
 var lookupApi = new Userservicejppoldk.LookupAndValidateApi()
 authorize.register(clientAccess);
+var crudApi = new Userservicejppoldk.UserCrudApi();
 
 
 var l = 1;
@@ -66,8 +67,17 @@ var findMin = program.findMaximum;
 var retrieving = false;
 var maxChangeNumber = maxChange; // {Number} First change of interest
 
+var logUser = function(error, data, response) {
+	console.log(data);
+}
+
 var pc = new ParseChanges(lookupApi, function(changeLogItem) {
 	console.log(changeLogItem.Operation, changeLogItem.OperationNumber, changeLogItem.UserIdentifier, changeLogItem.EventTime);
+
+	if (changeLogItem.Operation == "Create" || changeLogItem.Operation == "Update"){
+		crudApi.getUserById(changeLogItem.UserIdentifier, logUser);
+	}
+
 	localStorage.setItem('maxChange', Math.max(maxChange, changeLogItem.OperationNumber));
 });
 
